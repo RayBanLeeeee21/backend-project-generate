@@ -134,7 +134,18 @@ class SQLParser:
         if unsigned:
             field['unsigned'] = True
 
-        if base_type in ['VARCHAR', 'CHAR']:
+        # int/bigint/smallint/tinyint 带长度
+        if base_type in ['INT', 'BIGINT', 'SMALLINT', 'TINYINT', 'MEDIUMINT']:
+            if params:
+                field['length'] = int(params)
+            # TINYINT/SMALLINT/MEDIUMINT 特殊处理 status 字段
+            if base_type in ['TINYINT', 'SMALLINT', 'MEDIUMINT']:
+                if field.get('name', '').lower() == 'status':
+                    field['type'] = 'enum'
+                    field['enum_values'] = {"0": "active", "1": "inactive"}
+                else:
+                    field['type'] = 'int'
+        elif base_type in ['VARCHAR', 'CHAR']:
             if params:
                 field['max_length'] = int(params)
         elif base_type == 'DECIMAL':
@@ -143,12 +154,6 @@ class SQLParser:
                 field['precision'] = int(parts[0])
                 if len(parts) > 1:
                     field['scale'] = int(parts[1])
-        elif base_type in ['TINYINT', 'SMALLINT', 'MEDIUMINT']:
-            if field.get('name', '').lower() == 'status':
-                field['type'] = 'enum'
-                field['enum_values'] = {"0": "active", "1": "inactive"}
-            else:
-                field['type'] = 'int'
         # 其它类型已映射，无需特殊处理
 
     def _parse_unique_key(self, line: str) -> List[str]:
