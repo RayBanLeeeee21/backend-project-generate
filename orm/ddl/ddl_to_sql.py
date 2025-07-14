@@ -78,6 +78,22 @@ class DecimalTypeHandler(TypeHandler):
         scale = field.get('scale', 2)
         return f'decimal({precision},{scale})'
 
+class DoubleTypeHandler(TypeHandler):
+    """浮点类型处理器"""
+
+    def convert(self, field: dict) -> str:
+        precision = field.get('precision', 10)
+        scale = field.get('scale', 2)
+        return f'double({precision},{scale})'
+
+class FloatTypeHandler(TypeHandler):
+    """浮点类型处理器"""
+
+    def convert(self, field: dict) -> str:
+        precision = field.get('precision', 10)
+        scale = field.get('scale', 2)
+        return f'float({precision},{scale})'
+
 
 class EnumTypeHandler(TypeHandler):
     """枚举类型处理器"""
@@ -115,6 +131,12 @@ class MediumTextTypeHandler(TypeHandler):
     def convert(self, field: dict) -> str:
         return 'mediumtext'
 
+class LongTextTypeHandler(TypeHandler):
+    """longtext类型处理器"""
+
+    def convert(self, field: dict) -> str:
+        return 'longtext'
+
 class JsonTypeHandler(TypeHandler):
     """默认类型处理器"""
 
@@ -135,9 +157,12 @@ class TypeRegistry:
             'date': DateTypeHandler(),
             'datetime': DateTypeHandler(),
             'decimal': DecimalTypeHandler(),
+            'double': DoubleTypeHandler(),
+            'float': FloatTypeHandler(),
             'json': JsonTypeHandler(),
             'text': TextTypeHandler(),
             'mediumtext': MediumTextTypeHandler(),
+            'longtext': LongTextTypeHandler(),
             'enum': EnumTypeHandler(),
         }
         self._default_handler = TextTypeHandler()

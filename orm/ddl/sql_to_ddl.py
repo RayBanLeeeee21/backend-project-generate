@@ -16,13 +16,14 @@ class SQLParser:
             'DATE': 'date',
             'DATETIME': 'datetime',
             'DECIMAL': 'decimal',
+            'DOUBLE': 'double',
             'VARCHAR': 'string',
             'TEXT': 'text',
             'MEDIUMTEXT': 'mediumtext',
+            'LONGTEXT': 'longtext',
             'JSON': 'json',
             'CHAR': 'string',
             'FLOAT': 'float',
-            'DOUBLE': 'float'
         }
 
     def parse_create_table(self, sql: str) -> Dict[str, Any]:
