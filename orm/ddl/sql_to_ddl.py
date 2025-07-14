@@ -25,20 +25,22 @@ class SQLParser:
 
     def parse_create_table(self, sql: str) -> Dict[str, Any]:
         """解析CREATE TABLE语句"""
-        # 提取表名（支持反引号）
+        # 提取表名（支持反引号，关键词大小写不敏感）
         table_name_match = re.search(r'CREATE\s+TABLE\s+`?(\w+)`?', sql, re.IGNORECASE)
         if not table_name_match:
             raise ValueError("无法解析表名")
         table_name = table_name_match.group(1)
 
-        # 提取表定义部分
-        table_def_match = re.search(r'\((.*)\)\s*(ENGINE|TYPE)?=.*?COMMENT\s*=\s*[\'"](.+?)[\'"]', sql, re.DOTALL | re.IGNORECASE)
+        # 提取表定义部分（关键词大小写不敏感）
+        table_def_match = re.search(
+            r'\((.*)\)\s*(ENGINE|TYPE)?=.*?COMMENT\s*=\s*[\'"](.+?)[\'"]',
+            sql, re.DOTALL | re.IGNORECASE
+        )
         if table_def_match:
             table_def = table_def_match.group(1)
             table_comment = table_def_match.group(3)
         else:
-            # 没有表注释时的兼容
-            table_def_match = re.search(r'\((.*)\)', sql, re.DOTALL)
+            table_def_match = re.search(r'\((.*)\)', sql, re.DOTALL | re.IGNORECASE)
             if not table_def_match:
                 raise ValueError("无法解析表定义")
             table_def = table_def_match.group(1)
@@ -56,7 +58,7 @@ class SQLParser:
 
         # 分类字段（排除主键字段）
         non_id_fields = [f for f in fields if f['name'] not in pk_set]
-        key_fields, value_fields, status_fields = self._classify_fields(non_id_fields, unique_keys)
+        key_fields, value_fields, status_fields = self._classify_fields(non_id_fields, indexes)
 
         return {
             "table_name": table_name,
@@ -65,7 +67,7 @@ class SQLParser:
             "key_fields": key_fields,
             "value_fields": value_fields,
             "status_fields": status_fields,
-            "unique_keys": unique_keys,  # 现在是 [{name, fields}]
+            "unique_keys": unique_keys,
             "indexes": indexes,
             "primary_key": pk_info
         }
@@ -84,13 +86,14 @@ class SQLParser:
             if not line:
                 continue
 
-            if line.upper().startswith('PRIMARY KEY'):
+            # 关键词大小写不敏感
+            if re.match(r'^PRIMARY\s+KEY', line, re.IGNORECASE):
                 pk_info = self._parse_primary_key(line)
-            elif line.upper().startswith('UNIQUE KEY'):
+            elif re.match(r'^UNIQUE\s+KEY', line, re.IGNORECASE):
                 uk = self._parse_unique_key(line)
                 if uk:
                     unique_keys.append(uk)
-            elif line.upper().startswith('INDEX') or line.upper().startswith('KEY'):
+            elif re.match(r'^(INDEX|KEY)', line, re.IGNORECASE):
                 idx = self._parse_index(line)
                 if idx:
                     indexes.append(idx)
@@ -190,7 +193,6 @@ class SQLParser:
 
     def _parse_unique_key(self, line: str) -> Optional[Dict[str, Any]]:
         """解析唯一键约束，返回索引名和字段列表"""
-        # UNIQUE KEY `name` (`field1`, `field2`, ...)
         pattern = r'UNIQUE\s+KEY\s+`?(\w+)`?\s*\(([^)]+)\)'
         match = re.search(pattern, line, re.IGNORECASE)
         if match:
@@ -202,7 +204,6 @@ class SQLParser:
 
     def _parse_index(self, line: str) -> Dict[str, Any]:
         """解析索引定义"""
-        # 支持 KEY 和 INDEX，带反引号和注释
         pattern = r'(?:KEY|INDEX)\s+`?(\w+)`?\s*\(([^)]+)\)\s*(?:COMMENT\s+([\'"])(.*?)(\3))?'
         match = re.search(pattern, line, re.IGNORECASE)
         if not match:
@@ -218,19 +219,25 @@ class SQLParser:
             "comment": comment.replace("\\'", "'").replace('\\"', '"')
         }
 
-    def _classify_fields(self, fields: List[Dict], unique_key_def: Dict[str, Any]) -> tuple:
-        """将字段分类为key_fields, value_fields, status_fields"""
+    def _classify_fields(self, fields: List[Dict], indexes: List[Dict]) -> tuple:
+        """将字段分类为key_fields, value_fields, status_fields
+        key_fields: 在非唯一索引（普通索引）中的字段
+        """
         key_fields = []
         value_fields = []
         status_fields = []
 
-
+        # 收集所有普通索引字段
+        index_fields = set()
+        for idx in indexes:
+            if idx.get('type') == 'normal':
+                index_fields.update(idx.get('fields', []))
 
         for field in fields:
             field_name = field['name']
             field_type = field['type']
 
-            if field_name in unique_key_def.get('fields', []):
+            if field_name in index_fields:
                 key_fields.append(field)
             else:
                 value_fields.append(field)
