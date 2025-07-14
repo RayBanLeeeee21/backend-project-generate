@@ -10,11 +10,23 @@ class TypeHandler(ABC):
         pass
 
 
-class IntTypeHandler(TypeHandler):
+class BigIntTypeHandler(TypeHandler):
     """整数类型处理器"""
 
     def convert(self, field: dict) -> str:
-        return 'INT'
+        return 'BIGINT'
+
+class SmallIntTypeHandler(TypeHandler):
+    """整数类型处理器"""
+
+    def convert(self, field: dict) -> str:
+        return 'SMALLINT'
+
+class TinyIntTypeHandler(TypeHandler):
+    """整数类型处理器"""
+
+    def convert(self, field: dict) -> str:
+        return 'TINYINT'
 
 
 class StringTypeHandler(TypeHandler):
@@ -23,7 +35,7 @@ class StringTypeHandler(TypeHandler):
     def convert(self, field: dict) -> str:
         max_length = field.get('max_length')
         if max_length is None:
-            raise ValueError("字符串类型字段必须指定最大长度")
+            raise ValueError(f'解析字段 {field["name"]} 时未指定 max_length')
         return f'VARCHAR({max_length})'
 
 
@@ -79,7 +91,9 @@ class TypeRegistry:
 
     def __init__(self):
         self._handlers: Dict[str, TypeHandler] = {
-            'int': IntTypeHandler(),
+            'bigint': BigIntTypeHandler(),
+            'smallint': SmallIntTypeHandler(),
+            'tinyint': TinyIntTypeHandler(),
             'string': StringTypeHandler(),
             'date': DateTypeHandler(),
             'decimal': DecimalTypeHandler(),
@@ -134,9 +148,7 @@ def ddl_to_sql(table_config: dict) -> str:
     key_field_list = table_config.get('key_fields', [])
     key_field_map = {field['name']: field for field in key_field_list}
     value_field_list = table_config.get('value_fields', [])
-    value_field_map = {field['name']: field for field in value_field_list}
     status_field_list = table_config.get('status_fields', [])
-    status_field_map = {field['name']: field for field in status_field_list}
 
     # 格式化字段定义 - 修复这里
     all_field_list = key_field_list + value_field_list + status_field_list

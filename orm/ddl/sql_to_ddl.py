@@ -9,19 +9,24 @@ class SQLParser:
     def __init__(self):
         self.type_mappings = {
             'INT': 'int',
+            'BIGINT': 'bigint',
             'TINYINT': 'enum',
             'SMALLINT': 'enum',
             'MEDIUMINT': 'enum',
             'DATE': 'date',
+            'DATETIME': 'datetime',
             'DECIMAL': 'decimal',
             'VARCHAR': 'string',
-            'TEXT': 'string'
+            'TEXT': 'string',
+            'CHAR': 'string',
+            'FLOAT': 'float',
+            'DOUBLE': 'float'
         }
 
     def parse_create_table(self, sql: str) -> Dict[str, Any]:
         """解析CREATE TABLE语句"""
-        # 提取表名
-        table_name_match = re.search(r'CREATE\s+TABLE\s+(\w+)', sql, re.IGNORECASE)
+        # 提取表名（支持反引号）
+        table_name_match = re.search(r'CREATE\s+TABLE\s+`?(\w+)`?', sql, re.IGNORECASE)
         if not table_name_match:
             raise ValueError("无法解析表名")
 
@@ -75,7 +80,8 @@ class SQLParser:
 
     def _parse_field(self, line: str) -> Optional[Dict[str, Any]]:
         """解析字段定义"""
-        pattern = r'(\w+)\s+([A-Z]+(?:\(\d+(?:,\d+)?\))?)\s*(?:COMMENT\s+([\'"])((?:(?!\3)[^\\]|\\.)*)(\3))?'
+        # 支持字段名带反引号
+        pattern = r'`?(\w+)`?\s+([A-Z]+(?:\(\d+(?:,\d+)?\))?)\s*(?:COMMENT\s+([\'"])((?:(?!\3)[^\\]|\\.)*)(\3))?'
         match = re.match(pattern, line, re.IGNORECASE)
 
         if not match:
@@ -106,42 +112,45 @@ class SQLParser:
         base_type = type_match.group(1)
         params = type_match.group(2)
 
-        if base_type == 'VARCHAR':
-            field['type'] = 'string'
+        # 类型映射
+        mapped_type = self.type_mappings.get(base_type, 'string')
+        field['type'] = mapped_type
+
+        if base_type in ['VARCHAR', 'CHAR']:
             if params:
                 field['max_length'] = int(params)
         elif base_type == 'DECIMAL':
-            field['type'] = 'decimal'
             if params:
                 parts = params.split(',')
                 field['precision'] = int(parts[0])
                 if len(parts) > 1:
                     field['scale'] = int(parts[1])
         elif base_type in ['TINYINT', 'SMALLINT', 'MEDIUMINT']:
-            field['type'] = 'enum'
-            field['enum_values'] = {"0": "active", "1": "inactive"}  # 默认状态枚举
-        elif base_type == 'INT':
-            field['type'] = 'int'
-        elif base_type == 'DATE':
-            field['type'] = 'date'
-        else:
-            field['type'] = 'string'
+            # 仅当字段名为status时才默认枚举，否则为int
+            if field.get('name', '').lower() == 'status':
+                field['type'] = 'enum'
+                field['enum_values'] = {"0": "active", "1": "inactive"}
+            else:
+                field['type'] = 'int'
+        # 其它类型已映射，无需特殊处理
 
     def _parse_unique_key(self, line: str) -> List[str]:
         """解析唯一键约束"""
-        # 匹配: UNIQUE KEY uk_name (field1, field2, ...)
-        pattern = r'UNIQUE\s+KEY\s+\w+\s*\(([^)]+)\)'
+        # 匹配: UNIQUE KEY uk_name (`field1`, `field2`, ...)
+        pattern = r'UNIQUE\s+KEY\s+`?\w+`?\s*\(([^)]+)\)'
         match = re.search(pattern, line, re.IGNORECASE)
 
         if match:
             fields_str = match.group(1)
-            return [field.strip() for field in fields_str.split(',')]
+            # 去除字段名的反引号
+            return [field.strip().strip('`') for field in fields_str.split(',')]
 
         return []
 
     def _parse_index(self, line: str) -> Dict[str, Any]:
         """解析索引定义"""
-        pattern = r'INDEX\s+(\w+)\s*\(([^)]+)\)\s*(?:COMMENT\s+([\'"])((?:(?!\3)[^\\]|\\.)*)(\3))?'
+        # 支持索引名和字段名带反引号
+        pattern = r'INDEX\s+`?(\w+)`?\s*\(([^)]+)\)\s*(?:COMMENT\s+([\'"])((?:(?!\3)[^\\]|\\.)*)(\3))?'
         match = re.search(pattern, line, re.IGNORECASE)
 
         if not match:
@@ -150,7 +159,8 @@ class SQLParser:
         index_name = match.group(1)
         fields_str = match.group(2)
         comment = match.group(4) or ""  # 注释内容在第4个分组
-        fields = [field.strip() for field in fields_str.split(',')]
+        # 去除字段名的反引号
+        fields = [field.strip().strip('`') for field in fields_str.split(',')]
 
         return {
             "name": index_name,
@@ -173,8 +183,6 @@ class SQLParser:
 
             if field_name in unique_key_set:
                 key_fields.append(field)
-            elif field_type == 'enum' or field_name == 'status':
-                status_fields.append(field)
             else:
                 value_fields.append(field)
 

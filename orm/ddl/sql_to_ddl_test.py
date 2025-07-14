@@ -5,11 +5,11 @@ from orm.ddl.sql_to_ddl import sql_to_ddl
 
 if __name__ == '__main__':
 
-    ddl_input = utils.read_as_json('tables/test_table.json', encoding='utf-8')
+    sql_str = utils.read_as_str('tables/test_table.sql')
+    ddl_data_1 = sql_to_ddl(sql_str)
+    utils.write_json('tables/test_table.json', ddl_data_1)
 
-    sql_str = ddl_to_sql(ddl_input)
-    ddl_data = sql_to_ddl(sql_str)
+    sql_str_2 = ddl_to_sql(ddl_data_1)
+    ddl_data_2 = sql_to_ddl(sql_str_2)
 
-    utils.write_json('tables/test_table-2.json', ddl_data, indent=2)
-
-    assert ddl_data == ddl_input, "The converted DDL does not match the original DDL."
+    assert ddl_data_1 == ddl_data_2, "The converted DDL does not match the original DDL."
