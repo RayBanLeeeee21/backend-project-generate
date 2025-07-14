@@ -14,19 +14,28 @@ class BigIntTypeHandler(TypeHandler):
     """整数类型处理器"""
 
     def convert(self, field: dict) -> str:
-        return 'BIGINT'
+        length = field.get('length')
+        if length is None:
+            raise ValueError(f'解析字段 {field["name"]} 时未指定 length')
+        return f'BIGINT({length})'
 
 class SmallIntTypeHandler(TypeHandler):
     """整数类型处理器"""
 
     def convert(self, field: dict) -> str:
-        return 'SMALLINT'
+        length = field.get('length')
+        if length is None:
+            raise ValueError(f'解析字段 {field["name"]} 时未指定 length')
+        return f'SMALLINT({length})'
 
 class TinyIntTypeHandler(TypeHandler):
     """整数类型处理器"""
 
     def convert(self, field: dict) -> str:
-        return 'TINYINT'
+        length = field.get('length')
+        if length is None:
+            raise ValueError(f'解析字段 {field["name"]} 时未指定 length')
+        return f'TINYINT({length})'
 
 
 class StringTypeHandler(TypeHandler):
