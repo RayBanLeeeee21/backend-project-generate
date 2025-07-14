@@ -29,15 +29,20 @@ class SQLParser:
         table_name_match = re.search(r'CREATE\s+TABLE\s+`?(\w+)`?', sql, re.IGNORECASE)
         if not table_name_match:
             raise ValueError("无法解析表名")
-
         table_name = table_name_match.group(1)
 
         # 提取表定义部分
-        table_def_match = re.search(r'\((.*)\)', sql, re.DOTALL)
-        if not table_def_match:
-            raise ValueError("无法解析表定义")
-
-        table_def = table_def_match.group(1)
+        table_def_match = re.search(r'\((.*)\)\s*(ENGINE|TYPE)?=.*?COMMENT\s*=\s*[\'"](.+?)[\'"]', sql, re.DOTALL | re.IGNORECASE)
+        if table_def_match:
+            table_def = table_def_match.group(1)
+            table_comment = table_def_match.group(3)
+        else:
+            # 没有表注释时的兼容
+            table_def_match = re.search(r'\((.*)\)', sql, re.DOTALL)
+            if not table_def_match:
+                raise ValueError("无法解析表定义")
+            table_def = table_def_match.group(1)
+            table_comment = ""
 
         # 解析字段和约束
         fields, unique_keys, indexes = self._parse_table_definition(table_def)
@@ -47,6 +52,7 @@ class SQLParser:
 
         return {
             "table_name": table_name,
+            "table_comment": table_comment,
             "key_fields": key_fields,
             "value_fields": value_fields,
             "status_fields": status_fields,
@@ -80,21 +86,30 @@ class SQLParser:
 
     def _parse_field(self, line: str) -> Optional[Dict[str, Any]]:
         """解析字段定义"""
-        # 支持字段名带反引号
-        pattern = r'`?(\w+)`?\s+([A-Z]+(?:\(\d+(?:,\d+)?\))?)\s*(?:COMMENT\s+([\'"])((?:(?!\3)[^\\]|\\.)*)(\3))?'
+        # 支持字段名带反引号、类型参数、unsigned、default、not null、comment
+        pattern = (
+            r'`(?P<name>\w+)`\s+'
+            r'(?P<type>[A-Z]+(?:\(\d+(?:,\d+)?\))?(?:\s+unsigned)?)'
+            r'(?:\s+NOT\s+NULL)?'
+            r'(?:\s+DEFAULT\s+(?P<default>(?:\'[^\']*\'|[^\s]+)))?'
+            r'(?:\s+AUTO_INCREMENT)?'
+            r'(?:\s+COMMENT\s+(?P<quote>[\'"])(?P<comment>.*?)(?P=quote))?'
+        )
         match = re.match(pattern, line, re.IGNORECASE)
-
         if not match:
             return None
 
-        field_name = match.group(1)
-        field_type_str = match.group(2).upper()
-        comment = match.group(4) or ""  # 注释内容在第4个分组
+        field_name = match.group('name')
+        field_type_str = match.group('type').upper()
+        comment = match.group('comment') or ""
+        default = match.group('default')
 
         field = {
             "name": field_name,
-            "comment": comment.replace("\\'", "'").replace('\\"', '"')  # 处理转义引号
+            "comment": comment.replace("\\'", "'").replace('\\"', '"'),
         }
+        if default is not None:
+            field["default"] = default.strip("'")
 
         # 解析类型
         self._parse_field_type(field, field_type_str)
@@ -103,7 +118,9 @@ class SQLParser:
 
     def _parse_field_type(self, field: Dict[str, Any], type_str: str):
         """解析字段类型"""
-        # 提取基础类型和参数
+        # 支持 unsigned
+        unsigned = 'UNSIGNED' in type_str
+        type_str = type_str.replace('UNSIGNED', '').strip()
         type_match = re.match(r'([A-Z]+)(?:\(([^)]+)\))?', type_str)
         if not type_match:
             field['type'] = 'string'
@@ -112,9 +129,10 @@ class SQLParser:
         base_type = type_match.group(1)
         params = type_match.group(2)
 
-        # 类型映射
         mapped_type = self.type_mappings.get(base_type, 'string')
         field['type'] = mapped_type
+        if unsigned:
+            field['unsigned'] = True
 
         if base_type in ['VARCHAR', 'CHAR']:
             if params:
@@ -126,7 +144,6 @@ class SQLParser:
                 if len(parts) > 1:
                     field['scale'] = int(parts[1])
         elif base_type in ['TINYINT', 'SMALLINT', 'MEDIUMINT']:
-            # 仅当字段名为status时才默认枚举，否则为int
             if field.get('name', '').lower() == 'status':
                 field['type'] = 'enum'
                 field['enum_values'] = {"0": "active", "1": "inactive"}
@@ -136,32 +153,23 @@ class SQLParser:
 
     def _parse_unique_key(self, line: str) -> List[str]:
         """解析唯一键约束"""
-        # 匹配: UNIQUE KEY uk_name (`field1`, `field2`, ...)
         pattern = r'UNIQUE\s+KEY\s+`?\w+`?\s*\(([^)]+)\)'
         match = re.search(pattern, line, re.IGNORECASE)
-
         if match:
             fields_str = match.group(1)
-            # 去除字段名的反引号
             return [field.strip().strip('`') for field in fields_str.split(',')]
-
         return []
 
     def _parse_index(self, line: str) -> Dict[str, Any]:
         """解析索引定义"""
-        # 支持索引名和字段名带反引号
-        pattern = r'INDEX\s+`?(\w+)`?\s*\(([^)]+)\)\s*(?:COMMENT\s+([\'"])((?:(?!\3)[^\\]|\\.)*)(\3))?'
+        pattern = r'(?:KEY|INDEX)\s+`?(\w+)`?\s*\(([^)]+)\)\s*(?:COMMENT\s+([\'"])((?:(?!\3)[^\\]|\\.)*)(\3))?'
         match = re.search(pattern, line, re.IGNORECASE)
-
         if not match:
             return {}
-
         index_name = match.group(1)
         fields_str = match.group(2)
-        comment = match.group(4) or ""  # 注释内容在第4个分组
-        # 去除字段名的反引号
+        comment = match.group(4) or ""
         fields = [field.strip().strip('`') for field in fields_str.split(',')]
-
         return {
             "name": index_name,
             "fields": fields,
