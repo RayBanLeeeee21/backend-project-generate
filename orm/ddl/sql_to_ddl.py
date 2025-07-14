@@ -75,8 +75,7 @@ class SQLParser:
 
     def _parse_field(self, line: str) -> Optional[Dict[str, Any]]:
         """解析字段定义"""
-        # 匹配字段定义: field_name TYPE [COMMENT 'comment']
-        pattern = r'(\w+)\s+([A-Z]+(?:\(\d+(?:,\d+)?\))?)\s*(?:COMMENT\s+[\'"]([^\'"]*)[\'"])?'
+        pattern = r'(\w+)\s+([A-Z]+(?:\(\d+(?:,\d+)?\))?)\s*(?:COMMENT\s+([\'"])((?:(?!\3)[^\\]|\\.)*)(\3))?'
         match = re.match(pattern, line, re.IGNORECASE)
 
         if not match:
@@ -84,11 +83,11 @@ class SQLParser:
 
         field_name = match.group(1)
         field_type_str = match.group(2).upper()
-        comment = match.group(3) or ""
+        comment = match.group(4) or ""  # 注释内容在第4个分组
 
         field = {
             "name": field_name,
-            "comment": comment.replace("\\'", "'")  # 反转义单引号
+            "comment": comment.replace("\\'", "'").replace('\\"', '"')  # 处理转义引号
         }
 
         # 解析类型
@@ -142,8 +141,7 @@ class SQLParser:
 
     def _parse_index(self, line: str) -> Dict[str, Any]:
         """解析索引定义"""
-        # 匹配: INDEX index_name (field1, field2, ...) [COMMENT 'comment']
-        pattern = r'INDEX\s+(\w+)\s*\(([^)]+)\)\s*(?:COMMENT\s+[\'"]([^\'"]*)[\'"])?'
+        pattern = r'INDEX\s+(\w+)\s*\(([^)]+)\)\s*(?:COMMENT\s+([\'"])((?:(?!\3)[^\\]|\\.)*)(\3))?'
         match = re.search(pattern, line, re.IGNORECASE)
 
         if not match:
@@ -151,14 +149,14 @@ class SQLParser:
 
         index_name = match.group(1)
         fields_str = match.group(2)
-        comment = match.group(3) or ""
+        comment = match.group(4) or ""  # 注释内容在第4个分组
         fields = [field.strip() for field in fields_str.split(',')]
 
         return {
             "name": index_name,
             "fields": fields,
             "type": "normal",
-            "comment": comment.replace("\\'", "'")  # 反转义单引号，与字段注释处理一致
+            "comment": comment.replace("\\'", "'").replace('\\"', '"')
         }
 
     def _classify_fields(self, fields: List[Dict], unique_keys: List[str]) -> tuple:
