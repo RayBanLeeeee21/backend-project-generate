@@ -7,4 +7,5 @@ __all__ = [
     'read_as_json',
     'write_json',
     'write_str',
+    'read_as_str',
 ]

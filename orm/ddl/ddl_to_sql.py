@@ -21,7 +21,9 @@ class StringTypeHandler(TypeHandler):
     """字符串类型处理器"""
 
     def convert(self, field: dict) -> str:
-        max_length = field.get('max_length', 255)
+        max_length = field.get('max_length')
+        if max_length is None:
+            raise ValueError("字符串类型字段必须指定最大长度")
         return f'VARCHAR({max_length})'
 
 
@@ -115,7 +117,7 @@ def _convert_type(field: dict) -> str:
     return handler.convert(field)
 
 
-def generate_ddl_from_json(table_config: dict) -> str:
+def ddl_to_sql(table_config: dict) -> str:
     """
     根据表结构JSON数据生成DDL语句
 
@@ -177,13 +179,21 @@ def generate_ddl_from_json(table_config: dict) -> str:
     for index in table_config.get('indexes', []):
         index_name = index['name']
         index_fields = ', '.join(index['fields'])
+        index_comment = index.get('comment', '')
 
         # 验证索引字段是否存在
         for field_name in index['fields']:
             if field_name not in all_field_map:
                 raise ValueError(f"索引字段 '{field_name}' 在表 '{table_name}' 中未定义")
 
-        ddl_lines.append(f"    INDEX {index_name} ({index_fields}),")
+        # 构建索引定义，包含注释
+        index_def = f"    INDEX {index_name} ({index_fields})"
+        if index_comment:
+            index_comment = index_comment.replace("'", "\\'")  # 转义单引号
+            index_def += f" COMMENT '{index_comment}'"
+        index_def += ","
+
+        ddl_lines.append(index_def)
 
     # 移除最后一个逗号
     if ddl_lines[-1].endswith(','):

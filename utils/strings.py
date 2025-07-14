@@ -23,3 +23,7 @@ def write_str(file_name, data, encoding='utf8', **kwargs):
 
     with open(file_name, encoding=encoding, mode='w', **kwargs) as fd:
         fd.write(data)
+
+def read_as_str(file_name):
+    with open(file_name, encoding='utf8') as fd:
+        return fd.read(-1)
