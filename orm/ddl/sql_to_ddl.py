@@ -17,7 +17,9 @@ class SQLParser:
             'DATETIME': 'datetime',
             'DECIMAL': 'decimal',
             'VARCHAR': 'string',
-            'TEXT': 'string',
+            'TEXT': 'text',
+            'MEDIUMTEXT': 'mediumtext',
+            'JSON': 'json',
             'CHAR': 'string',
             'FLOAT': 'float',
             'DOUBLE': 'float'

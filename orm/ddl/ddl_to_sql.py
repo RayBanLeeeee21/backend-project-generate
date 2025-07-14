@@ -103,11 +103,23 @@ class EnumTypeHandler(TypeHandler):
             return "int"
 
 
-class DefaultTypeHandler(TypeHandler):
-    """默认类型处理器"""
+class TextTypeHandler(TypeHandler):
+    """TEXT类型处理器"""
 
     def convert(self, field: dict) -> str:
         return 'text'
+
+class MediumTextTypeHandler(TypeHandler):
+    """mediumtext类型处理器"""
+
+    def convert(self, field: dict) -> str:
+        return 'mediumtext'
+
+class JsonTypeHandler(TypeHandler):
+    """默认类型处理器"""
+
+    def convert(self, field: dict) -> str:
+        return 'json'
 
 
 class TypeRegistry:
@@ -123,9 +135,12 @@ class TypeRegistry:
             'date': DateTypeHandler(),
             'datetime': DateTypeHandler(),
             'decimal': DecimalTypeHandler(),
-            'enum': EnumTypeHandler()  # 添加这行
+            'json': JsonTypeHandler(),
+            'text': TextTypeHandler(),
+            'mediumtext': MediumTextTypeHandler(),
+            'enum': EnumTypeHandler(),
         }
-        self._default_handler = DefaultTypeHandler()
+        self._default_handler = TextTypeHandler()
 
     def get_handler(self, type_name: str) -> TypeHandler:
         return self._handlers.get(type_name.lower(), self._default_handler)
