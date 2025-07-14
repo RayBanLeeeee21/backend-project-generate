@@ -175,16 +175,14 @@ def ddl_to_sql(table_config: dict) -> str:
     table_name = table_config['table_name']
     ddl_lines = [f"CREATE TABLE {table_name} ("]
 
-    # 处理主要字段
+    # 主键字段
+    id_field_list = table_config.get('id_fields', [])
     key_field_list = table_config.get('key_fields', [])
-    key_field_map = {field['name']: field for field in key_field_list}
     value_field_list = table_config.get('value_fields', [])
     status_field_list = table_config.get('status_fields', [])
 
-    # 格式化字段定义 - 修复这里
-    all_field_list = key_field_list + value_field_list + status_field_list
-
     # 检查是否重复
+    all_field_list = id_field_list + key_field_list + value_field_list + status_field_list
     all_field_map = {}
     for field in all_field_list:
         field_name = field.get('name')
@@ -198,44 +196,41 @@ def ddl_to_sql(table_config: dict) -> str:
         all_field_map[field_name] = field
 
     # 添加字段到DDL
-    formatted_fields = [_format_field(field) for field in all_field_list]  # 使用_format_field
+    formatted_fields = [_format_field(field) for field in all_field_list]
     ddl_lines.extend([f"    {field}," for field in formatted_fields])
+
+    # 添加主键约束
+    pk_info = table_config.get('primary_key')
+    if pk_info and pk_info.get('fields'):
+        pk_fields = ', '.join([f"`{f}`" for f in pk_info['fields']])
+        pk_line = f"    PRIMARY KEY ({pk_fields})"
+        if pk_info.get('index_type'):
+            pk_line += f" USING {pk_info['index_type']}"
+        pk_line += ","
+        ddl_lines.append(pk_line)
 
     # 添加唯一键约束
     if table_config.get('unique_keys'):
         unique_key_names = ', '.join(table_config['unique_keys'])
         if unique_key_names:
-            # 确保唯一键字段在表中存在
             for key in unique_key_names.split(','):
-                # 检查一下key是否合法，不能有空格，必须是合法的标识符
                 key = key.strip()
                 if not key or not key.isidentifier():
                     raise ValueError(f"唯一键字段 '{key}' 在表 '{table_name}' 中不符合规范")
-
-                # 检查一下是否在字段列表中
-                if key not in key_field_map:
+                if key not in all_field_map:
                     raise ValueError(f"唯一键字段 '{key.strip()}' 在表 '{table_name}' 中未定义")
-            # 添加唯一键约束
         ddl_lines.append(f"    UNIQUE KEY uk_{table_name} ({unique_key_names}),")
 
     # 添加索引定义
     for index in table_config.get('indexes', []):
         index_name = index['name']
-        index_fields = ', '.join(index['fields'])
+        index_fields = ', '.join([f"`{f}`" for f in index['fields']])
         index_comment = index.get('comment', '')
-
-        # 验证索引字段是否存在
-        for field_name in index['fields']:
-            if field_name not in all_field_map:
-                raise ValueError(f"索引字段 '{field_name}' 在表 '{table_name}' 中未定义")
-
-        # 构建索引定义，包含注释
         index_def = f"    INDEX {index_name} ({index_fields})"
         if index_comment:
             index_comment = index_comment.replace("'", "\\'")  # 转义单引号
             index_def += f" COMMENT '{index_comment}'"
         index_def += ","
-
         ddl_lines.append(index_def)
 
     # 移除最后一个逗号

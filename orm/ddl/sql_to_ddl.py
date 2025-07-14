@@ -45,19 +45,29 @@ class SQLParser:
             table_comment = ""
 
         # 解析字段和约束
-        fields, unique_keys, indexes = self._parse_table_definition(table_def)
+        fields, unique_keys, indexes, pk_info = self._parse_table_definition(table_def)
 
-        # 分类字段
-        key_fields, value_fields, status_fields = self._classify_fields(fields, unique_keys)
+        # 主键字段归类
+        id_fields = []
+        pk_set = set()
+        if pk_info:
+            pk_set = set(pk_info['fields'])
+            id_fields = [f for f in fields if f['name'] in pk_set]
+
+        # 分类字段（排除主键字段）
+        non_id_fields = [f for f in fields if f['name'] not in pk_set]
+        key_fields, value_fields, status_fields = self._classify_fields(non_id_fields, unique_keys)
 
         return {
             "table_name": table_name,
             "table_comment": table_comment,
+            "id_fields": id_fields,
             "key_fields": key_fields,
             "value_fields": value_fields,
             "status_fields": status_fields,
             "unique_keys": unique_keys,
-            "indexes": indexes
+            "indexes": indexes,
+            "primary_key": pk_info
         }
 
     def _parse_table_definition(self, table_def: str) -> tuple:
@@ -67,25 +77,44 @@ class SQLParser:
         fields = []
         unique_keys = []
         indexes = []
+        pk_info = None
 
         for line in lines:
             line = line.strip()
             if not line:
                 continue
 
-            if line.upper().startswith('UNIQUE KEY'):
+            if line.upper().startswith('PRIMARY KEY'):
+                pk_info = self._parse_primary_key(line)
+            elif line.upper().startswith('UNIQUE KEY'):
                 unique_keys.extend(self._parse_unique_key(line))
             elif line.upper().startswith('INDEX') or line.upper().startswith('KEY'):
-                # 支持 KEY 和 INDEX
                 idx = self._parse_index(line)
                 if idx:
                     indexes.append(idx)
-            elif not any(line.upper().startswith(keyword) for keyword in ['PRIMARY KEY', 'FOREIGN KEY', 'CHECK']):
+            else:
+                # 解析字段
                 field = self._parse_field(line)
                 if field:
                     fields.append(field)
 
-        return fields, unique_keys, indexes
+        return fields, unique_keys, indexes, pk_info
+
+    def _parse_primary_key(self, line: str) -> Optional[Dict[str, Any]]:
+        """解析主键约束"""
+        # PRIMARY KEY (`id`) USING BTREE
+        pattern = r'PRIMARY\s+KEY\s*\(([^)]+)\)(?:\s+USING\s+(\w+))?'
+        match = re.search(pattern, line, re.IGNORECASE)
+        if not match:
+            return None
+        fields_str = match.group(1)
+        index_type = match.group(2) or ""
+        fields = [field.strip().strip('`') for field in fields_str.split(',')]
+        return {
+            "fields": fields,
+            "type": "primary",
+            "index_type": index_type
+        }
 
     def _parse_field(self, line: str) -> Optional[Dict[str, Any]]:
         """解析字段定义"""
