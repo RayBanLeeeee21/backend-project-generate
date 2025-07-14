@@ -139,7 +139,6 @@ def generate_ddl_from_json(table_config: dict) -> str:
     # 格式化字段定义 - 修复这里
     all_field_list = key_field_list + value_field_list + status_field_list
 
-
     # 检查是否重复
     all_field_map = {}
     for field in all_field_list:
@@ -174,17 +173,22 @@ def generate_ddl_from_json(table_config: dict) -> str:
             # 添加唯一键约束
         ddl_lines.append(f"    UNIQUE KEY uk_{table_name} ({unique_key_names}),")
 
+    # 添加索引定义
+    for index in table_config.get('indexes', []):
+        index_name = index['name']
+        index_fields = ', '.join(index['fields'])
+
+        # 验证索引字段是否存在
+        for field_name in index['fields']:
+            if field_name not in all_field_map:
+                raise ValueError(f"索引字段 '{field_name}' 在表 '{table_name}' 中未定义")
+
+        ddl_lines.append(f"    INDEX {index_name} ({index_fields}),")
+
     # 移除最后一个逗号
     if ddl_lines[-1].endswith(','):
         ddl_lines[-1] = ddl_lines[-1][:-1]
 
     ddl_lines.append(");")
-
-    # 添加索引
-    for key in table_config.get('keys', []):
-        index_name = key['name']
-        # 从索引名称推断字段名
-        field_name = index_name.split('_')[-1]
-        ddl_lines.append(f"CREATE INDEX {index_name} ON {table_name} ({field_name});")
 
     return '\n'.join(ddl_lines)
