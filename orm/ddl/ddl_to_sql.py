@@ -12,11 +12,13 @@ class TypeHandler(ABC):
 
 class IntTypeHandler(TypeHandler):
     """int类型处理器"""
+
     def convert(self, field: dict) -> str:
         length = field.get('length')
         if length is None:
             raise ValueError(f'解析字段 {field["name"]} 时未指定 length')
         return f'int({length})'
+
 
 class BigIntTypeHandler(TypeHandler):
     """整数类型处理器"""
@@ -27,6 +29,7 @@ class BigIntTypeHandler(TypeHandler):
             raise ValueError(f'解析字段 {field["name"]} 时未指定 length')
         return f'bigint({length})'
 
+
 class SmallIntTypeHandler(TypeHandler):
     """整数类型处理器"""
 
@@ -35,6 +38,7 @@ class SmallIntTypeHandler(TypeHandler):
         if length is None:
             raise ValueError(f'解析字段 {field["name"]} 时未指定 length')
         return f'smallint({length})'
+
 
 class TinyIntTypeHandler(TypeHandler):
     """整数类型处理器"""
@@ -58,6 +62,7 @@ class StringTypeHandler(TypeHandler):
 
 class DateTypeHandler(TypeHandler):
     """日期类型处理器"""
+
     def convert(self, field: dict) -> str:
         # 修复：区分 date 和 datetime
         if field.get('type') == 'datetime':
@@ -148,6 +153,10 @@ def _format_field(field: dict, quote_field_names: bool = True) -> str:
     if field.get('not_null', False) or field.get('required', False):
         field_def += " NOT NULL"
 
+    # 生成 AUTO_INCREMENT
+    if field.get('auto_increment', False):
+        field_def += " AUTO_INCREMENT"
+
     # 生成 DEFAULT
     if 'default' in field and field['default'] is not None:
         default_val = field['default']
@@ -227,12 +236,14 @@ def ddl_to_sql(table_config: dict, quote_field_names: bool = True) -> str:
     # 添加索引定义
     for index in table_config.get('indexes', []):
         index_name = index['name']
+        if quote_field_names:
+            index_name = f"`{index_name}`"
         index_fields = ', '.join([f"`{f}`" if quote_field_names else f"{f}" for f in index['fields']])
         index_comment = index.get('comment', '')
         index_def = f"    KEY {index_name} ({index_fields})"
         if index_comment:
             index_comment = index_comment.replace("'", "\\'")  # 转义单引号
-            index_def += f" comment '{index_comment}'"
+            index_def += f" COMMENT '{index_comment}'"
         index_def += ","
         ddl_lines.append(index_def)
 
@@ -244,6 +255,7 @@ def ddl_to_sql(table_config: dict, quote_field_names: bool = True) -> str:
 
     # 添加表注释
     if table_comment:
-        ddl_lines[-1] = ddl_lines[-1][:-1] + f" comment='{table_comment}';" if ddl_lines[-1].endswith(';') else ddl_lines[-1] + f" comment='{table_comment}';"
+        ddl_lines[-1] = ddl_lines[-1][:-1] + f" ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='{table_comment}';" if ddl_lines[-1].endswith(';') else \
+        ddl_lines[-1] + f" ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='{table_comment}';"
 
     return '\n'.join(ddl_lines)

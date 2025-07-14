@@ -123,13 +123,13 @@ class SQLParser:
 
     def _parse_field(self, line: str) -> Optional[Dict[str, Any]]:
         """解析字段定义"""
-        # 支持字段名带反引号、类型参数、unsigned、default、not null、comment
+        # 支持字段名带反引号、类型参数、unsigned、default、not null、comment、auto_increment
         pattern = (
             r'`(?P<name>\w+)`\s+'
             r'(?P<type>[A-Z]+(?:\(\d+(?:,\d+)?\))?(?:\s+unsigned)?)'
             r'(?P<not_null>\s+NOT\s+NULL)?'
             r'(?:\s+DEFAULT\s+(?P<default>(?:\'[^\']*\'|[^\s]+)))?'
-            r'(?:\s+AUTO_INCREMENT)?'
+            r'(?P<auto_increment>\s+AUTO_INCREMENT)?'
             r'(?:\s+COMMENT\s+(?P<quote>[\'"])(?P<comment>.*?)(?P=quote))?'
         )
         match = re.match(pattern, line, re.IGNORECASE)
@@ -141,6 +141,7 @@ class SQLParser:
         comment = match.group('comment') or ""
         default = match.group('default')
         not_null = bool(match.group('not_null'))
+        auto_increment = bool(match.group('auto_increment'))
 
         field = {
             "name": field_name,
@@ -150,6 +151,8 @@ class SQLParser:
             field["default"] = default.strip("'").strip('"')
         if not_null:
             field["not_null"] = True
+        if auto_increment:
+            field["auto_increment"] = True
 
         # 解析类型
         self._parse_field_type(field, field_type_str)
@@ -177,11 +180,6 @@ class SQLParser:
         if base_type in ['INT', 'BIGINT', 'SMALLINT', 'TINYINT', 'MEDIUMINT']:
             if params:
                 field['length'] = int(params)
-            # TINYINT/SMALLINT/MEDIUMINT 特殊处理 status 字段
-            if base_type in ['TINYINT', 'SMALLINT', 'MEDIUMINT']:
-                if field.get('name', '').lower() == 'status':
-                    field['type'] = 'enum'
-                    field['enum_values'] = {"0": "active", "1": "inactive"}
         elif base_type in ['VARCHAR', 'CHAR']:
             if params:
                 field['max_length'] = int(params)
