@@ -10,9 +10,9 @@ class SQLParser:
         self.type_mappings = {
             'INT': 'int',
             'BIGINT': 'bigint',
-            'TINYINT': 'enum',
-            'SMALLINT': 'enum',
-            'MEDIUMINT': 'enum',
+            'TINYINT': 'tinyint',
+            'SMALLINT': 'smallint',
+            'MEDIUMINT': 'int',
             'DATE': 'date',
             'DATETIME': 'datetime',
             'DECIMAL': 'decimal',
@@ -75,8 +75,11 @@ class SQLParser:
 
             if line.upper().startswith('UNIQUE KEY'):
                 unique_keys.extend(self._parse_unique_key(line))
-            elif line.upper().startswith('INDEX'):
-                indexes.append(self._parse_index(line))
+            elif line.upper().startswith('INDEX') or line.upper().startswith('KEY'):
+                # 支持 KEY 和 INDEX
+                idx = self._parse_index(line)
+                if idx:
+                    indexes.append(idx)
             elif not any(line.upper().startswith(keyword) for keyword in ['PRIMARY KEY', 'FOREIGN KEY', 'CHECK']):
                 field = self._parse_field(line)
                 if field:
@@ -109,7 +112,8 @@ class SQLParser:
             "comment": comment.replace("\\'", "'").replace('\\"', '"'),
         }
         if default is not None:
-            field["default"] = default.strip("'")
+            # 保留原始 DEFAULT 值（去除外层引号）
+            field["default"] = default.strip("'").strip('"')
 
         # 解析类型
         self._parse_field_type(field, field_type_str)
@@ -118,7 +122,6 @@ class SQLParser:
 
     def _parse_field_type(self, field: Dict[str, Any], type_str: str):
         """解析字段类型"""
-        # 支持 unsigned
         unsigned = 'UNSIGNED' in type_str
         type_str = type_str.replace('UNSIGNED', '').strip()
         type_match = re.match(r'([A-Z]+)(?:\(([^)]+)\))?', type_str)
@@ -143,8 +146,6 @@ class SQLParser:
                 if field.get('name', '').lower() == 'status':
                     field['type'] = 'enum'
                     field['enum_values'] = {"0": "active", "1": "inactive"}
-                else:
-                    field['type'] = 'int'
         elif base_type in ['VARCHAR', 'CHAR']:
             if params:
                 field['max_length'] = int(params)
@@ -167,7 +168,8 @@ class SQLParser:
 
     def _parse_index(self, line: str) -> Dict[str, Any]:
         """解析索引定义"""
-        pattern = r'(?:KEY|INDEX)\s+`?(\w+)`?\s*\(([^)]+)\)\s*(?:COMMENT\s+([\'"])((?:(?!\3)[^\\]|\\.)*)(\3))?'
+        # 支持 KEY 和 INDEX，带反引号和注释
+        pattern = r'(?:KEY|INDEX)\s+`?(\w+)`?\s*\(([^)]+)\)\s*(?:COMMENT\s+([\'"])(.*?)(\3))?'
         match = re.search(pattern, line, re.IGNORECASE)
         if not match:
             return {}

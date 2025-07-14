@@ -10,6 +10,14 @@ class TypeHandler(ABC):
         pass
 
 
+class IntTypeHandler(TypeHandler):
+    """int类型处理器"""
+    def convert(self, field: dict) -> str:
+        length = field.get('length')
+        if length is None:
+            raise ValueError(f'解析字段 {field["name"]} 时未指定 length')
+        return f'INT({length})'
+
 class BigIntTypeHandler(TypeHandler):
     """整数类型处理器"""
 
@@ -100,11 +108,13 @@ class TypeRegistry:
 
     def __init__(self):
         self._handlers: Dict[str, TypeHandler] = {
+            'int': IntTypeHandler(),
             'bigint': BigIntTypeHandler(),
             'smallint': SmallIntTypeHandler(),
             'tinyint': TinyIntTypeHandler(),
             'string': StringTypeHandler(),
             'date': DateTypeHandler(),
+            'datetime': DateTypeHandler(),
             'decimal': DecimalTypeHandler(),
             'enum': EnumTypeHandler()  # 添加这行
         }
@@ -126,6 +136,18 @@ def _format_field(field: dict) -> str:
     comment = comment.replace("'", "\\'")  # 转义单引号
 
     field_def = f"{field_name} {field_type}"
+
+    # 生成 NOT NULL
+    if field.get('not_null', False) or field.get('required', False):
+        field_def += " NOT NULL"
+
+    # 生成 DEFAULT
+    if 'default' in field and field['default'] is not None:
+        default_val = field['default']
+        # 判断类型是否需要加引号
+        if isinstance(default_val, str) and not default_val.isdigit():
+            default_val = f"'{default_val}'"
+        field_def += f" DEFAULT {default_val}"
 
     if comment:
         field_def += f" COMMENT '{comment}'"
