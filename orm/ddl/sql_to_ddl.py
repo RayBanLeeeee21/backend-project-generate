@@ -127,7 +127,7 @@ class SQLParser:
         pattern = (
             r'`(?P<name>\w+)`\s+'
             r'(?P<type>[A-Z]+(?:\(\d+(?:,\d+)?\))?(?:\s+unsigned)?)'
-            r'(?:\s+NOT\s+NULL)?'
+            r'(?P<not_null>\s+NOT\s+NULL)?'
             r'(?:\s+DEFAULT\s+(?P<default>(?:\'[^\']*\'|[^\s]+)))?'
             r'(?:\s+AUTO_INCREMENT)?'
             r'(?:\s+COMMENT\s+(?P<quote>[\'"])(?P<comment>.*?)(?P=quote))?'
@@ -140,14 +140,16 @@ class SQLParser:
         field_type_str = match.group('type').upper()
         comment = match.group('comment') or ""
         default = match.group('default')
+        not_null = bool(match.group('not_null'))
 
         field = {
             "name": field_name,
             "comment": comment.replace("\\'", "'").replace('\\"', '"'),
         }
         if default is not None:
-            # 保留原始 DEFAULT 值（去除外层引号）
             field["default"] = default.strip("'").strip('"')
+        if not_null:
+            field["not_null"] = True
 
         # 解析类型
         self._parse_field_type(field, field_type_str)

@@ -16,7 +16,7 @@ class IntTypeHandler(TypeHandler):
         length = field.get('length')
         if length is None:
             raise ValueError(f'解析字段 {field["name"]} 时未指定 length')
-        return f'INT({length})'
+        return f'int({length})'
 
 class BigIntTypeHandler(TypeHandler):
     """整数类型处理器"""
@@ -25,7 +25,7 @@ class BigIntTypeHandler(TypeHandler):
         length = field.get('length')
         if length is None:
             raise ValueError(f'解析字段 {field["name"]} 时未指定 length')
-        return f'BIGINT({length})'
+        return f'bigint({length})'
 
 class SmallIntTypeHandler(TypeHandler):
     """整数类型处理器"""
@@ -34,7 +34,7 @@ class SmallIntTypeHandler(TypeHandler):
         length = field.get('length')
         if length is None:
             raise ValueError(f'解析字段 {field["name"]} 时未指定 length')
-        return f'SMALLINT({length})'
+        return f'smallint({length})'
 
 class TinyIntTypeHandler(TypeHandler):
     """整数类型处理器"""
@@ -43,7 +43,7 @@ class TinyIntTypeHandler(TypeHandler):
         length = field.get('length')
         if length is None:
             raise ValueError(f'解析字段 {field["name"]} 时未指定 length')
-        return f'TINYINT({length})'
+        return f'tinyint({length})'
 
 
 class StringTypeHandler(TypeHandler):
@@ -53,14 +53,16 @@ class StringTypeHandler(TypeHandler):
         max_length = field.get('max_length')
         if max_length is None:
             raise ValueError(f'解析字段 {field["name"]} 时未指定 max_length')
-        return f'VARCHAR({max_length})'
+        return f'varchar({max_length})'
 
 
 class DateTypeHandler(TypeHandler):
     """日期类型处理器"""
-
     def convert(self, field: dict) -> str:
-        return 'DATE'
+        # 修复：区分 date 和 datetime
+        if field.get('type') == 'datetime':
+            return 'datetime'
+        return 'date'
 
 
 class DecimalTypeHandler(TypeHandler):
@@ -69,7 +71,7 @@ class DecimalTypeHandler(TypeHandler):
     def convert(self, field: dict) -> str:
         precision = field.get('precision', 10)
         scale = field.get('scale', 2)
-        return f'DECIMAL({precision},{scale})'
+        return f'decimal({precision},{scale})'
 
 
 class EnumTypeHandler(TypeHandler):
@@ -87,20 +89,20 @@ class EnumTypeHandler(TypeHandler):
             enum_count = len(enum_values)
 
         if enum_count <= 255:
-            return "TINYINT"
+            return "tinyint"
         elif enum_count <= 65535:
-            return "SMALLINT"
+            return "smallint"
         elif enum_count <= 16777215:
-            return "MEDIUMINT"
+            return "mediumint"
         else:
-            return "INT"
+            return "int"
 
 
 class DefaultTypeHandler(TypeHandler):
     """默认类型处理器"""
 
     def convert(self, field: dict) -> str:
-        return 'TEXT'
+        return 'text'
 
 
 class TypeRegistry:
@@ -128,10 +130,15 @@ _type_registry = TypeRegistry()
 
 
 # 全局类型注册中心实例
-def _format_field(field: dict) -> str:
+def _format_field(field: dict, quote_field_names: bool = True) -> str:
     """格式化单个字段定义"""
     field_name = field['name']
+    if quote_field_names:
+        field_name = f"`{field_name}`"
     field_type = _convert_type(field)
+    # 输出 unsigned
+    if field.get('unsigned'):
+        field_type += ' unsigned'
     comment = field.get('comment', '')
     comment = comment.replace("'", "\\'")  # 转义单引号
 
@@ -144,11 +151,11 @@ def _format_field(field: dict) -> str:
     # 生成 DEFAULT
     if 'default' in field and field['default'] is not None:
         default_val = field['default']
-        # 判断类型是否需要加引号
         if isinstance(default_val, str) and not default_val.isdigit():
             default_val = f"'{default_val}'"
         field_def += f" DEFAULT {default_val}"
 
+    # 生成 COMMENT
     if comment:
         field_def += f" COMMENT '{comment}'"
 
@@ -162,19 +169,20 @@ def _convert_type(field: dict) -> str:
     return handler.convert(field)
 
 
-def ddl_to_sql(table_config: dict) -> str:
+def ddl_to_sql(table_config: dict, quote_field_names: bool = True) -> str:
     """
     根据表结构JSON数据生成DDL语句
 
     Args:
         table_config: 已读取的JSON配置数据
+        quote_field_names: 是否对字段名加反引号
 
     Returns:
         生成的DDL语句
     """
     table_name = table_config['table_name']
-    ddl_lines = [f"CREATE TABLE {table_name} ("]
-
+    table_comment = table_config.get('table_comment', '')
+    ddl_lines = [f"create table {table_name} ("]
     # 主键字段
     id_field_list = table_config.get('id_fields', [])
     key_field_list = table_config.get('key_fields', [])
@@ -196,16 +204,16 @@ def ddl_to_sql(table_config: dict) -> str:
         all_field_map[field_name] = field
 
     # 添加字段到DDL
-    formatted_fields = [_format_field(field) for field in all_field_list]
+    formatted_fields = [_format_field(field, quote_field_names) for field in all_field_list]
     ddl_lines.extend([f"    {field}," for field in formatted_fields])
 
     # 添加主键约束
     pk_info = table_config.get('primary_key')
     if pk_info and pk_info.get('fields'):
-        pk_fields = ', '.join([f"`{f}`" for f in pk_info['fields']])
+        pk_fields = ', '.join([f"`{f}`" if quote_field_names else f"{f}" for f in pk_info['fields']])
         pk_line = f"    PRIMARY KEY ({pk_fields})"
         if pk_info.get('index_type'):
-            pk_line += f" USING {pk_info['index_type']}"
+            pk_line += f" USING {pk_info['index_type'].upper()}"
         pk_line += ","
         ddl_lines.append(pk_line)
 
@@ -213,18 +221,18 @@ def ddl_to_sql(table_config: dict) -> str:
     if table_config.get('unique_keys'):
         for uk in table_config['unique_keys']:
             uk_name = uk['name']
-            uk_fields = ', '.join([f"`{f}`" for f in uk['fields']])
+            uk_fields = ', '.join([f"`{f}`" if quote_field_names else f"{f}" for f in uk['fields']])
             ddl_lines.append(f"    UNIQUE KEY {uk_name} ({uk_fields}),")
 
     # 添加索引定义
     for index in table_config.get('indexes', []):
         index_name = index['name']
-        index_fields = ', '.join([f"`{f}`" for f in index['fields']])
+        index_fields = ', '.join([f"`{f}`" if quote_field_names else f"{f}" for f in index['fields']])
         index_comment = index.get('comment', '')
-        index_def = f"    INDEX {index_name} ({index_fields})"
+        index_def = f"    KEY {index_name} ({index_fields})"
         if index_comment:
             index_comment = index_comment.replace("'", "\\'")  # 转义单引号
-            index_def += f" COMMENT '{index_comment}'"
+            index_def += f" comment '{index_comment}'"
         index_def += ","
         ddl_lines.append(index_def)
 
@@ -233,5 +241,9 @@ def ddl_to_sql(table_config: dict) -> str:
         ddl_lines[-1] = ddl_lines[-1][:-1]
 
     ddl_lines.append(");")
+
+    # 添加表注释
+    if table_comment:
+        ddl_lines[-1] = ddl_lines[-1][:-1] + f" comment='{table_comment}';" if ddl_lines[-1].endswith(';') else ddl_lines[-1] + f" comment='{table_comment}';"
 
     return '\n'.join(ddl_lines)
