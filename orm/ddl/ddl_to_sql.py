@@ -211,15 +211,10 @@ def ddl_to_sql(table_config: dict) -> str:
 
     # 添加唯一键约束
     if table_config.get('unique_keys'):
-        unique_key_names = ', '.join(table_config['unique_keys'])
-        if unique_key_names:
-            for key in unique_key_names.split(','):
-                key = key.strip()
-                if not key or not key.isidentifier():
-                    raise ValueError(f"唯一键字段 '{key}' 在表 '{table_name}' 中不符合规范")
-                if key not in all_field_map:
-                    raise ValueError(f"唯一键字段 '{key.strip()}' 在表 '{table_name}' 中未定义")
-        ddl_lines.append(f"    UNIQUE KEY uk_{table_name} ({unique_key_names}),")
+        for uk in table_config['unique_keys']:
+            uk_name = uk['name']
+            uk_fields = ', '.join([f"`{f}`" for f in uk['fields']])
+            ddl_lines.append(f"    UNIQUE KEY {uk_name} ({uk_fields}),")
 
     # 添加索引定义
     for index in table_config.get('indexes', []):

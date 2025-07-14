@@ -65,7 +65,7 @@ class SQLParser:
             "key_fields": key_fields,
             "value_fields": value_fields,
             "status_fields": status_fields,
-            "unique_keys": unique_keys,
+            "unique_keys": unique_keys,  # 现在是 [{name, fields}]
             "indexes": indexes,
             "primary_key": pk_info
         }
@@ -87,7 +87,9 @@ class SQLParser:
             if line.upper().startswith('PRIMARY KEY'):
                 pk_info = self._parse_primary_key(line)
             elif line.upper().startswith('UNIQUE KEY'):
-                unique_keys.extend(self._parse_unique_key(line))
+                uk = self._parse_unique_key(line)
+                if uk:
+                    unique_keys.append(uk)
             elif line.upper().startswith('INDEX') or line.upper().startswith('KEY'):
                 idx = self._parse_index(line)
                 if idx:
@@ -186,14 +188,17 @@ class SQLParser:
                     field['scale'] = int(parts[1])
         # 其它类型已映射，无需特殊处理
 
-    def _parse_unique_key(self, line: str) -> List[str]:
-        """解析唯一键约束"""
-        pattern = r'UNIQUE\s+KEY\s+`?\w+`?\s*\(([^)]+)\)'
+    def _parse_unique_key(self, line: str) -> Optional[Dict[str, Any]]:
+        """解析唯一键约束，返回索引名和字段列表"""
+        # UNIQUE KEY `name` (`field1`, `field2`, ...)
+        pattern = r'UNIQUE\s+KEY\s+`?(\w+)`?\s*\(([^)]+)\)'
         match = re.search(pattern, line, re.IGNORECASE)
         if match:
-            fields_str = match.group(1)
-            return [field.strip().strip('`') for field in fields_str.split(',')]
-        return []
+            name = match.group(1)
+            fields_str = match.group(2)
+            fields = [field.strip().strip('`') for field in fields_str.split(',')]
+            return {"name": name, "fields": fields}
+        return None
 
     def _parse_index(self, line: str) -> Dict[str, Any]:
         """解析索引定义"""
@@ -213,19 +218,19 @@ class SQLParser:
             "comment": comment.replace("\\'", "'").replace('\\"', '"')
         }
 
-    def _classify_fields(self, fields: List[Dict], unique_keys: List[str]) -> tuple:
+    def _classify_fields(self, fields: List[Dict], unique_key_def: Dict[str, Any]) -> tuple:
         """将字段分类为key_fields, value_fields, status_fields"""
         key_fields = []
         value_fields = []
         status_fields = []
 
-        unique_key_set = set(unique_keys)
+
 
         for field in fields:
             field_name = field['name']
             field_type = field['type']
 
-            if field_name in unique_key_set:
+            if field_name in unique_key_def.get('fields', []):
                 key_fields.append(field)
             else:
                 value_fields.append(field)
